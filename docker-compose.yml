@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  bot:
+    container_name: 'project_bot'
+    build: .
+    image: 'bots/project'
+    volumes:
+      - ./data:/opt/project_bot/data
+    env_file: '.env'
+    restart: always
