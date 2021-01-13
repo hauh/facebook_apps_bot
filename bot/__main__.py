@@ -1,12 +1,27 @@
-"""Project Bot."""
+"""Facebook Apps Bot."""
 
 import logging
-import sys
 
-from telegram.error import TelegramError
-from telegram.ext import Filters, MessageHandler, Updater
+from telegram import InlineKeyboardMarkup, TelegramError
+from telegram.ext import CommandHandler
 
-from bot import bot_kwargs
+from bot import updater
+
+
+def reply(update, text, buttons=None, answer=None):
+	"""Reply to user, answer callback query, and clean chat."""
+	keyboard = InlineKeyboardMarkup(buttons) if buttons else None
+	update.effective_chat.send_message(text, reply_markup=keyboard)
+	if update.callback_query:
+		try:
+			update.callback_query.answer(text=answer)
+			update.callback_query.delete_message()
+		except TelegramError as err:
+			logging.warning("Chat error - %s", err)
+
+
+def start(update, context):
+	context.bot.reply("START")
 
 
 def error(update, context):
@@ -22,19 +37,12 @@ def error(update, context):
 		logging.warning("User '%s' %s", user, error_info)
 
 
-def echo(update, _context):
-	update.effective_chat.send_message(update.effective_message.text)
-
-
 def main():
-	try:
-		updater = Updater(**bot_kwargs)
-	except TelegramError as err:
-		logging.critical("Telegram connection error: %s", err)
-		sys.exit(1)
+	setattr(updater.bot, 'reply', reply)
+	setattr(updater.bot, 'restart', start)
 
 	dispatcher = updater.dispatcher
-	dispatcher.add_handler(MessageHandler(Filters.text, echo))
+	dispatcher.add_handler(CommandHandler('start', start))
 	dispatcher.add_error_handler(error)
 
 	updater.start_polling()
