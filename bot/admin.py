@@ -7,7 +7,7 @@ from telegram.ext import (
 )
 from telegram.ext.filters import MessageFilter
 
-from bot import db
+from bot import db, facebook
 from bot.replies import (
 	add_acc_btn, add_acc_texts, admin_main_text, back_btn, button, confirm_btn,
 	manage_acc_buttons, manage_acc_texts, reply
@@ -68,7 +68,12 @@ def get_password(update, context):
 
 
 def do_add_account(update, context):
-	db.add_account(**context.user_data['new_account'])
+	status_message = update.effective_chat.send_message("Авторизация аккаунта...")
+	if facebook.authorize(**context.user_data.pop('new_account')):
+		update.callback_query.answer('GOOD', show_alert=True)
+	else:
+		update.callback_query.answer('BAD', show_alert=True)
+	status_message.delete()
 	return back_to_admin(update, context)
 
 

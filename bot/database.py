@@ -1,6 +1,7 @@
 """Database manager."""
 
 import logging
+import pickle
 import sqlite3
 from threading import Lock
 
@@ -20,8 +21,9 @@ class Database:
 			"""
 			CREATE TABLE if not exists 'accounts' (
 				'id' INTEGER primary key,
-				'login' TEXT not null,
-				'password' TEXT not null
+				'login' TEXT not null unique,
+				'password' TEXT not null,
+				'session' BLOB not null
 			)
 			"""
 		)
@@ -47,31 +49,48 @@ class Database:
 				logging.error("Database error - %s", err)
 				raise
 
-	def add_account(self, login, password):
+	def save_account(self, login, password, cookies):
 		self.transact(
-			"INSERT INTO accounts (login, password) values (?, ?)",
-			(login, password)
+			"""
+			INSERT INTO accounts (login, password, session) VALUES (?, ?, ?)
+			ON CONFLICT (login) DO UPDATE
+			SET password = excluded.password, session = excluded.session
+			""",
+			(login, password, pickle.dumps(cookies))
 		)
 		logging.info("New account (%s) added.", login)
 
 	def add_app(self, app_id, account_id):
 		self.transact(
-			"INSERT INTO apps (id, account) values (?, ?)",
+			"INSERT INTO apps (id, account) VALUES (?, ?)",
 			(app_id, account_id)
 		)
 		logging.info("New app (%s) added.", app_id)
 
+	def save_session(self, account_id, cookies):
+		self.transact(
+			"UPDATE accounts SET session = ? WHERE id = ?",
+			(pickle.dumps(cookies), account_id)
+		)
+
 	def get_accounts(self):
 		return self.transact("SELECT id, login FROM accounts").fetchall()
 
-	def get_account_for_app(self, app_id):
+	def get_account_credentials(self, account_id):
 		return self.transact(
+			"SELECT login, password FROM accounts WHERE id = ?",
+			(account_id,)
+		).fetchone()
+
+	def get_account_session(self, app_id):
+		account = self.transact(
 			"""
-			SELECT login, password FROM accounts WHERE id IN
+			SELECT id, session FROM accounts WHERE id IN
 			(SELECT account FROM apps WHERE id = ?)
 			""",
 			(app_id,)
 		).fetchone()
+		return account[0], pickle.loads(account[1])
 
 	def get_apps_for_account(self, account_id):
 		cur = self.transact("SELECT id FROM apps WHERE account = ?", (account_id,))
@@ -92,27 +111,27 @@ class Database:
 		self.transact("DELETE FROM apps WHERE id = ?", (app_id,))
 		logging.info("App (%s) deleted.", app_id)
 
-	def _test(self):
-		self.add_account("user", "pass")
-		self.add_account("user2", "pass2")
-		assert len(self.get_accounts()) == 2
-		self.add_app(111, 1)
-		self.add_app(222, 1)
-		self.add_app(333, 2)
-		assert len(self.get_apps_for_account(2)) == 1
-		assert len(self.get_apps_for_account(1)) == 2
-		account = self.get_account_for_app(111)
-		assert account is not None
-		assert len(account) == 2
-		assert account[0] == "user"
-		assert account[1] == "pass"
-		self.change_password(1, "new_pass")
-		assert self.get_account_for_app(111)[1] == "new_pass"
-		self.remove_app(111)
-		self.remove_app(222)
-		self.remove_app(333)
-		assert len(self.get_apps_for_account(1)) == 0
-		assert len(self.get_apps_for_account(2)) == 0
-		self.remove_account(1)
-		self.remove_account(2)
-		assert len(self.get_accounts()) == 0
+	# def _test(self):
+	# 	self.add_account("user", "pass")
+	# 	self.add_account("user2", "pass2")
+	# 	assert len(self.get_accounts()) == 2
+	# 	self.add_app(111, 1)
+	# 	self.add_app(222, 1)
+	# 	self.add_app(333, 2)
+	# 	assert len(self.get_apps_for_account(2)) == 1
+	# 	assert len(self.get_apps_for_account(1)) == 2
+	# 	account = self.get_account_for_app(111)
+	# 	assert account is not None
+	# 	assert len(account) == 2
+	# 	assert account[0] == "user"
+	# 	assert account[1] == "pass"
+	# 	self.change_password(1, "new_pass")
+	# 	assert self.get_account_for_app(111)[1] == "new_pass"
+	# 	self.remove_app(111)
+	# 	self.remove_app(222)
+	# 	self.remove_app(333)
+	# 	assert len(self.get_apps_for_account(1)) == 0
+	# 	assert len(self.get_apps_for_account(2)) == 0
+	# 	self.remove_account(1)
+	# 	self.remove_account(2)
+	# 	assert len(self.get_accounts()) == 0
