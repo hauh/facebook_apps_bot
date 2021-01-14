@@ -7,6 +7,7 @@ from telegram.ext import CommandHandler, Filters, MessageHandler
 
 from bot import updater
 from bot.admin import admin_menu
+from bot.connect import connect_conversation
 from bot.replies import connect_ad_account_btn, main_menu_text, reply
 
 
@@ -40,6 +41,7 @@ def main():
 	dispatcher = updater.dispatcher
 	dispatcher.add_handler(CommandHandler('start', start))
 	dispatcher.add_handler(admin_menu)
+	dispatcher.add_handler(connect_conversation)
 	dispatcher.add_handler(MessageHandler(Filters.all, clean))
 	dispatcher.add_error_handler(error)
 

@@ -15,6 +15,7 @@ class Database:
 			check_same_thread=False,
 			detect_types=sqlite3.PARSE_DECLTYPES
 		)
+		self.connection.row_factory = lambda _, row: row[0] if len(row) == 1 else row
 		self.lock = Lock()
 		self.transact("PRAGMA foreign_keys = 1")
 		self.transact(
@@ -82,20 +83,25 @@ class Database:
 			(account_id,)
 		).fetchone()
 
-	def get_account_session(self, app_id):
-		account = self.transact(
-			"""
-			SELECT id, session FROM accounts WHERE id IN
-			(SELECT account FROM apps WHERE id = ?)
-			""",
+	def get_app_account(self, app_id):
+		return self.transact(
+			"SELECT account FROM apps WHERE id = ?",
 			(app_id,)
 		).fetchone()
-		return account[0], pickle.loads(account[1])
+
+	def get_account_session(self, account_id):
+		return pickle.loads(
+			self.transact(
+				"SELECT session FROM accounts WHERE id = ?",
+				(account_id,)
+			).fetchone()
+		)
 
 	def get_apps_for_account(self, account_id):
-		cur = self.transact("SELECT id FROM apps WHERE account = ?", (account_id,))
-		cur.row_factory = lambda _, row: row[0]
-		return cur.fetchall()
+		return self.transact(
+			"SELECT id FROM apps WHERE account = ?",
+			(account_id,)
+		).fetchall()
 
 	def change_password(self, account_id, new_password):
 		self.transact(
@@ -110,28 +116,3 @@ class Database:
 	def remove_app(self, app_id):
 		self.transact("DELETE FROM apps WHERE id = ?", (app_id,))
 		logging.info("App (%s) deleted.", app_id)
-
-	# def _test(self):
-	# 	self.add_account("user", "pass")
-	# 	self.add_account("user2", "pass2")
-	# 	assert len(self.get_accounts()) == 2
-	# 	self.add_app(111, 1)
-	# 	self.add_app(222, 1)
-	# 	self.add_app(333, 2)
-	# 	assert len(self.get_apps_for_account(2)) == 1
-	# 	assert len(self.get_apps_for_account(1)) == 2
-	# 	account = self.get_account_for_app(111)
-	# 	assert account is not None
-	# 	assert len(account) == 2
-	# 	assert account[0] == "user"
-	# 	assert account[1] == "pass"
-	# 	self.change_password(1, "new_pass")
-	# 	assert self.get_account_for_app(111)[1] == "new_pass"
-	# 	self.remove_app(111)
-	# 	self.remove_app(222)
-	# 	self.remove_app(333)
-	# 	assert len(self.get_apps_for_account(1)) == 0
-	# 	assert len(self.get_apps_for_account(2)) == 0
-	# 	self.remove_account(1)
-	# 	self.remove_account(2)
-	# 	assert len(self.get_accounts()) == 0

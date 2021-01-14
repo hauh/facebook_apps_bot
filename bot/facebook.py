@@ -10,9 +10,9 @@ from bot import db
 login_url = "https://www.facebook.com/login"
 apps_url = "https://developers.facebook.com/apps/"
 settings_url = apps_url + "{}/settings/advanced/"
+centering_script = "arguments[0].scrollIntoView({block: 'center'});"
 
 options = ChromeOptions()
-options.use_chromium = True
 options.headless = True
 options.add_argument('--disable-infobars')
 options.add_argument('--no-sandbox')
@@ -32,7 +32,7 @@ class CookiesSet:
 		return len(driver.get_cookies()) >= self.cookie_count
 
 
-class AdAccounts:
+class AdAccountsSection:
 	"""Wait until form appears."""
 
 	def __call__(self, driver):
@@ -47,17 +47,17 @@ class SavingChanges:
 
 
 def with_driver(function):
-	def connection(*args):
+	def connection(**kwargs):
 		driver = Chrome(options=options)
 		try:
-			return function(*args, driver)
+			return function(driver, **kwargs)
 		finally:
 			driver.quit()
 	return connection
 
 
 @with_driver
-def authorize(login, password, driver=None):
+def authorize(driver, login, password):
 	driver.get(login_url)
 	driver.find_element_by_id('email').send_keys(login)
 	driver.find_element_by_id('pass').send_keys(password)
@@ -65,17 +65,15 @@ def authorize(login, password, driver=None):
 	try:
 		WebDriverWait(driver, 10).until(CookiesSet())
 	except TimeoutException:
-		driver.save_screenshot('data/bad.png')
 		return False
 	db.save_account(login, password, driver.get_cookies())
-	driver.save_screenshot('data/good.png')
 	return True
 
 
 @with_driver
-def update_app(app_id, new_ad_accounts_ids, driver=None):
+def update_app(driver, app_id, app_account, ad_accounts):
 	# restoring session
-	account_id, session = db.get_account_session(app_id)
+	session = db.get_account_session(app_account)
 	driver.execute_cdp_cmd('Network.enable', {})
 	for cookie in session:
 		driver.execute_cdp_cmd('Network.setCookie', cookie)
@@ -84,20 +82,22 @@ def update_app(app_id, new_ad_accounts_ids, driver=None):
 	# loading app page
 	url = settings_url.format(app_id)
 	driver.get(url)
-	ad_accounts = WebDriverWait(driver, 10).until(AdAccounts())
+	ads_section = WebDriverWait(driver, 10).until(AdAccountsSection())
 
 	# inputting new ad accounts
-	driver.execute_script("arguments[0].scrollIntoView()", ad_accounts)
-	ad_input = ad_accounts.find_elements_by_tag_name('input')[-1]
-	for acc_id in new_ad_accounts_ids:
-		ad_input.send_keys(acc_id)
-		ad_input.send_keys(Keys.ENTER)
+	driver.execute_script(centering_script, ads_section)
+	ad_section_input = ads_section.find_elements_by_tag_name('input')[-1]
+	for ad_account_id in ad_accounts:
+		print(ad_account_id)
+		ad_section_input.send_keys(ad_account_id)
+		ad_section_input.send_keys(Keys.ENTER)
 	driver.find_element_by_name('save_changes').click()
 	WebDriverWait(driver, 10).until(SavingChanges())
 
 	# checking result, updating session
+	driver.refresh()
 	registered = set()
 	for element in driver.find_elements_by_name('advertiser_account_ids[]'):
 		registered.add(int(element.get_attribute('value')))
-	db.save_session(account_id, driver.get_session())
+	db.save_session(app_account, driver.get_cookies())
 	return registered
