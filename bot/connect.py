@@ -1,5 +1,7 @@
 """Connect user's accounts to app."""
 
+import logging
+
 from telegram.ext import (
 	CallbackQueryHandler, ConversationHandler, Filters, MessageHandler
 )
@@ -52,20 +54,22 @@ def get_ad_account_id(update, context):
 def connect(update, context):
 	update.effective_message.edit_text(texts['working'], reply_markup=None)
 	connect_data = context.user_data.pop('connect_accounts')
+	app_id, ad_accounts = connect_data['app_id'], connect_data['ad_accounts']
 	try:
 		connected_accounts = facebook.update_app(**connect_data)
-	except Exception as err:
+	except Exception as err:  # pylint: disable=broad-except
 		message_text = texts['result_fail']
+		logging.error("Ad accounts connection error: %s", err)
 	else:
-		not_connected = connect_data['ad_accounts'].difference(connected_accounts)
-		message_text = texts['result_success'].format(
-			connect_data['app_id'],
-			len(connect_data['ad_accounts']) - len(not_connected)
-		)
+		not_connected = ad_accounts.difference(connected_accounts)
+		count = len(ad_accounts) - len(not_connected)
+		message_text = texts['result_success'].format(app_id, count)
 		if not_connected:
 			message_text += texts['result_partial'].format(
-				'\n'.join(str(not_connected_id) for not_connected_id in not_connected)
+				'\n'.join(str(missing_id) for missing_id in not_connected)
 			)
+		if count:
+			logging.info("New ad accounts (%s) connected to app %s", count, app_id)
 	reply(update, context, message_text, [back_btn])
 	return 1
 

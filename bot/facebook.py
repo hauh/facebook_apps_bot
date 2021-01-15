@@ -88,7 +88,6 @@ def update_app(driver, app_id, app_account, ad_accounts):
 	driver.execute_script(centering_script, ads_section)
 	ad_section_input = ads_section.find_elements_by_tag_name('input')[-1]
 	for ad_account_id in ad_accounts:
-		print(ad_account_id)
 		ad_section_input.send_keys(ad_account_id)
 		ad_section_input.send_keys(Keys.ENTER)
 	driver.find_element_by_name('save_changes').click()
